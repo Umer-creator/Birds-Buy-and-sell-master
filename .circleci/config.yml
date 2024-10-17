@@ -1,0 +1,57 @@
+version: 2.1
+orbs:
+  docker: circleci/docker@2.1.2
+
+jobs:
+  build-and-test:
+    description: Setup laravel application and run tests
+    docker:
+      - image: cimg/php:8.0-browsers
+
+    steps:
+      - checkout
+
+      - run:
+          name: "Prepare environment"
+          command: |
+            sudo apt update
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "composer.json" }}
+            - v1-dependencies-
+
+
+      - save_cache:
+          key: v1-dependencies-{{ checksum "composer.json" }}
+          paths:
+            - ./vendor
+
+      - run:
+          name: "Generate app key"
+          command: php artisan key:generate
+
+  build-docker-image:
+    executor:
+      name: docker/docker
+      tag: "3.6"
+    steps:
+      - checkout
+      - docker/install-docker-tools
+      - setup_remote_docker:
+          version: 20.10.14
+          docker_layer_caching: true
+      - run:
+          name: "Build and push Docker image"
+          command: |
+            docker build -t birdsbuyandsell.azurecr.io/birdsbuyandsell:latest .
+            docker login -u $DOCKER_USER -p $DOCKER_PASS birdsbuyandsell.azurecr.io
+            docker push birdsbuyandsell.azurecr.io/birdsbuyandsell:latest
+
+workflows:
+  test-and-deploy:
+    jobs:
+      - build-and-test
+      - build-docker-image:
+          requires:
+            - build-and-test
